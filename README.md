@@ -21,6 +21,10 @@ Or from a clone: `claude --plugin-dir ./clawd-commute`.
 
 In the band above the prompt, hidden until `/clawd-commute`. Terminal only.
 
+## Which repo
+
+The line follows the session's repo. Started in a folder of repos (not a repo itself), it follows the repo Claude last read, edited or `cd`ed into, and before that the child repo (or `Agents/` repo) with the newest commit. The title shows `repo/branch`.
+
 ## Commands
 
 - `/clawd-commute`

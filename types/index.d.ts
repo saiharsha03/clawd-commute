@@ -1,6 +1,7 @@
 export type Commit = { sha: string; subject: string }
 export type Line = {
   repo: boolean
+  name: string  // the repo's folder name
   branch: string
   commits: Commit[]  // oldest first
   dirty: number  // files changed, not committed

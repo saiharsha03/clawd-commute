@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { encode, ROWS } from './art'
-import { EMPTY, frame, parseLog, parseStatus } from './scene'
+import { EMPTY, frame, hintDir, parseLog, parseStatus } from './scene'
 import type { Line } from '../types'
 
 const FRAME_MS = 120
@@ -12,18 +12,49 @@ const shown = atom({ plugin: 'clawd-commute', key: 'shown' } as const, false)
 
 /** The band's mount, for blits between redraws. Module state: a reload starts over. */
 const band = { mount: null as { requestId: string; columns: number } | null, last: '', blit: true, lastRefresh: 0, startedAt: 0 }
+/** The repo the line follows: the session's, else the one Claude last worked in, else the freshest child repo. */
+const follow = { dir: null as string | null }
 
-async function git($: EngineInterface, args: string[]) {
+async function git($: EngineInterface, args: string[], cwd = follow.dir ?? undefined) {
   try {
-    return await $.process.run(['git', ...args], { timeoutMs: 5000 })
+    return await $.process.run(['git', ...args], { timeoutMs: 5000, ...(cwd ? { cwd } : {}) })
   } catch {
     return { exitCode: 1, stdout: '', stderr: '' }
   }
 }
 
+async function toplevel($: EngineInterface, dir: string) {
+  const r = await git($, ['rev-parse', '--show-toplevel'], dir)
+  return r.exitCode === 0 ? r.stdout.trim() : null
+}
+
+/** The session's own repo, else the repo under it (or under Agents/) with the newest commit. */
+async function discover($: EngineInterface) {
+  const cwd = await $.session.cwd()
+  const own = await toplevel($, cwd)
+  if (own) return own
+  let best: { dir: string; at: number } | null = null
+  for (const parent of [cwd, `${cwd}/Agents`]) {
+    let entries: { name: string; kind: string }[] = []
+    try {
+      entries = await $.fs.list(parent)
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const dir = `${parent}/${entry.name}`
+      if (entry.kind !== 'dir' || !(await $.fs.exists(`${dir}/.git`))) continue
+      const at = Number((await git($, ['log', '-1', '--format=%ct'], dir)).stdout.trim()) || 0
+      if (!best || at > best.at) best = { dir, at }
+    }
+  }
+  return best?.dir ?? null
+}
+
 async function refresh($: EngineInterface) {
   band.lastRefresh = await $.clock.now()
-  const head = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  if (!follow.dir) follow.dir = await discover($)
+  const head = follow.dir ? await git($, ['rev-parse', '--abbrev-ref', 'HEAD']) : { exitCode: 1, stdout: '' }
   if (head.exitCode !== 0) {
     await update($, line, old => ({ ...EMPTY, departedAt: old.departedAt }))
     return
@@ -36,6 +67,7 @@ async function refresh($: EngineInterface) {
   const s = parseStatus(status.stdout)
   await update($, line, old => ({
     repo: true,
+    name: (follow.dir ?? '').split(/[\\/]/).pop() ?? '',
     branch: head.stdout.trim(),
     commits: parseLog(log.stdout),
     dirty: s.dirty,
@@ -79,10 +111,20 @@ export const register: Register = hook => {
   // Anything that can move the repo: look again afterwards, at most every 3 s.
   hook('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    if (e.tool === 'Bash' && /\bgit\s+push\b/.test(e.command) && ran.deny === undefined && ran.isError !== true) {
+    if (e.tool === 'Bash' && /\bgit\s+push\b/.test(String(e.command ?? '')) && ran.deny === undefined && ran.isError !== true) {
       const now = await $.clock.now()
       await update($, line, old => ({ ...old, departedAt: now }))
       $.ui.toast('Clawd Commute: the tram has departed (pushed)')
+    }
+    const hint = hintDir(e.tool, e as unknown as Record<string, unknown>)
+    if (hint) {
+      const dir = /^([a-zA-Z]:)?[\\/]/.test(hint) ? hint : `${await $.session.cwd()}/${hint}`
+      const top = await toplevel($, dir)
+      if (top && top !== follow.dir) {
+        follow.dir = top
+        void refresh($)
+        return ran
+      }
     }
     const touches = e.tool === 'Bash' || e.tool === 'Edit' || e.tool === 'Write' || e.tool === 'NotebookEdit'
     if (touches && (await $.clock.now()) - band.lastRefresh > 3000) void refresh($)

@@ -4,7 +4,7 @@ import { along, canvas, cells, clawd, GROUND, label, put, rect, type Glyph, type
 
 import type { Commit, Line } from '../types'
 
-export const EMPTY: Line = { repo: false, branch: '', commits: [], dirty: 0, ahead: 0, conflict: false, departedAt: null }
+export const EMPTY: Line = { repo: false, name: '', branch: '', commits: [], dirty: 0, ahead: 0, conflict: false, departedAt: null }
 
 const RAIL = 0x6a6f7a
 const POST = 0x4a505c
@@ -61,7 +61,7 @@ export function frame(line: Line, t: number, now: number, W: number): Uint32Arra
   const room = Math.max(1, Math.floor((W - 34) / SPACING))
   const shown = line.commits.slice(-room)
   const xs = shown.map((_, i) => 10 + i * SPACING)
-  label(g, 1, 0, clip(`${line.branch} line`, Math.max(8, W - 30)), TEXT)
+  label(g, 1, 0, clip(line.name ? `${line.name}/${line.branch} line` : `${line.branch} line`, Math.max(8, W - 30)), TEXT)
   xs.forEach((x, i) => {
     const isHead = i === shown.length - 1
     station(c, g, x, isHead ? HEAD : SIGN)
@@ -97,4 +97,23 @@ export function frame(line: Line, t: number, now: number, W: number): Uint32Arra
   if (stops.length === 0) stops.push({ x: 3, stay: 1000, pose: 'stand' })
   tram(c, t, along(stops, t, 0.022).x)
   return cells(c, g)
+}
+
+/** `/c/Users/x` (Git Bash) → `C:/Users/x`; anything else unchanged. */
+export function nativePath(p: string): string {
+  const m = /^\/([a-zA-Z])\/(.*)$/.exec(p)
+  return m ? `${m[1]!.toUpperCase()}:/${m[2]}` : p
+}
+
+/** The folder a tool call points into, so the line can follow the repo being worked in. */
+export function hintDir(tool: string, input: Record<string, unknown>): string | null {
+  const file = input.file_path ?? input.notebook_path
+  if (typeof file === 'string') return nativePath(file).replace(/[\\/][^\\/]*$/, '')
+  if ((tool === 'Grep' || tool === 'Glob') && typeof input.path === 'string') return nativePath(input.path)
+  if (tool === 'Bash' && typeof input.command === 'string') {
+    const m = /(?:^|&&|;)\s*cd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))|\bgit\s+-C\s+(?:"([^"]+)"|([^\s;&|]+))/.exec(input.command)
+    const dir = m && (m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5])
+    if (dir) return nativePath(dir)
+  }
+  return null
 }
