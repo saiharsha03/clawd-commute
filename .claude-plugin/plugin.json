@@ -1,0 +1,13 @@
+{
+  "name": "clawd-commute",
+  "version": "0.1.0",
+  "author": {
+    "name": "Sai Rudra"
+  },
+  "description": "Your git branch as a tram line above the prompt: each recent commit a station, Clawd rides between them; a push makes the tram depart. /clawd-commute toggles it.",
+  "types": "./types/index.d.ts",
+  "displayName": "Clawd's Commute",
+  "homepage": "https://github.com/saiharsha03/clawd-commute",
+  "repository": "https://github.com/saiharsha03/clawd-commute",
+  "license": "MIT"
+}

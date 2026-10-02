@@ -1,0 +1,16 @@
+{
+  "name": "clawd-commute",
+  "owner": {
+    "name": "Sai Rudra"
+  },
+  "metadata": {
+    "description": "Your git branch as a tram line above the prompt: each recent commit a station, Clawd rides between them; a push makes the tram depart. /clawd-commute toggles it."
+  },
+  "plugins": [
+    {
+      "name": "clawd-commute",
+      "source": "./",
+      "description": "Your git branch as a tram line above the prompt: each recent commit a station, Clawd rides between them; a push makes the tram depart. /clawd-commute toggles it."
+    }
+  ]
+}
